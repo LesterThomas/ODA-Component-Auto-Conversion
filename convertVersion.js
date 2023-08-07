@@ -1,69 +1,135 @@
 // create javascript module with function convertVersion 
 
-function convertVersion(yamlObject, desiredAPIVersion) {
+function convertVersion(yamlObject) {
 
-    // create APIVersion object based on objectsArray[key].apiVersion and desiredAPIVersion
-    var apiVersion = new APIVersion(yamlObject.apiVersion, desiredAPIVersion);
-
-    // if the oldAPIVersion is v1alpha3 or v1alpha4 and newVersion is v1alpha2 or v1alpha1 then convert dependentAPIs dependantAPIs
-    if (apiVersion.mapOldToNew(["v1beta2"], ["v1beta1"])) {
-        console.log("convert isRequired: yes/no to required: true/false for any API in exposedAPIs property of coreFunction, security and management segments")
-        
-        const segmentList = ["coreFunction", "security", "management"];
-        for (const propertyKey of segmentList) {
-            if (yamlObject[propertyKey].exposedAPIs) {
-                for (var exposedAPI of yamlObject[propertyKey].exposedAPIs) {
-                    if (exposedAPI.isRequired) {
-                        // convert 'yes' or 'no' to true or false
-                        exposedAPI.required = exposedAPI.isRequired == 'yes' ? true : false;
-                        delete exposedAPI.isRequired;
-                    }
-                }
-            }
-        }
-
-        console.log("convert dependantAPIs to dependentAPIs")
-        if (yamlObject.coreFunction.dependantAPIs) {
-            yamlObject.coreFunction.dependentAPIs = yamlObject.coreFunction.dependantAPIs;
-            delete yamlObject.coreFunction.dependantAPIs
-        }
-
-        console.log("convert isRequired: yes/no to required: true/false for any API in dependentAPIs property of coreFunction, security and management segments")
-        
-        for (const propertyKey of segmentList) {
-            if (yamlObject[propertyKey].dependentAPIs) {
-                for (var exposedAPI of yamlObject[propertyKey].dependentAPIs) {
-                    if (exposedAPI.isRequired) {
-                        // convert 'yes' or 'no' to true or false
-                        exposedAPI.required = exposedAPI.isRequired == 'yes' ? true : false;
-                        delete exposedAPI.isRequired;
-                    }
-                }
-            }
-        }
-    
-
+    // Move coreFunction, security and management segments into the spec
+    process.stdout.write("Move coreFunction, security (or securityFunction) and management (or managementFunction) segments into the spec: ")
+    let segmentList = ["coreFunction", "security", "management", "securityFunction", "managementFunction"]
+    let count = 0
+    for (const propertyKey of segmentList) {
+        if (yamlObject[propertyKey]) {
+            yamlObject.spec[propertyKey] = yamlObject[propertyKey]
+            delete yamlObject[propertyKey]
+            count++
+        }   
     }
-    yamlObject.converted=desiredAPIVersion;
+    logSuccess(count + " segments moved")
+
+    // Rename security and management segments to securityFunction and managementFunction
+    process.stdout.write("Rename security and management segments to securityFunction and managementFunction: ")
+    count = 0
+    for (const propertyKey of segmentList) {
+        if (yamlObject.spec[propertyKey]) {
+            if (propertyKey == "security") {
+                yamlObject.spec.securityFunction = yamlObject.spec[propertyKey]
+                delete yamlObject.spec[propertyKey]
+                count++
+            }
+            if (propertyKey == "management") {
+                yamlObject.spec.managementFunction = yamlObject.spec[propertyKey]
+                delete yamlObject.spec[propertyKey]
+                count++
+            }
+        }
+    }
+    logSuccess(count + " segments renamed")
+
+    segmentList = ["coreFunction", "securityFunction", "managementFunction"]
+
+    // Convert isRequired: yes/no to required: true/false for any API in exposedAPIs property of coreFunction, security and management segments
+    process.stdout.write("Convert isRequired: yes/no to required: true/false for any API in exposedAPIs property of coreFunction, security and management segments: ")
+    count = 0
+    for (const propertyKey of segmentList) {
+        if (yamlObject.spec[propertyKey].exposedAPIs) {
+            for (var exposedAPI of yamlObject.spec[propertyKey].exposedAPIs) {
+                if (exposedAPI.isRequired) {
+                    // convert 'yes' or 'no' to true or false
+                    exposedAPI.required = exposedAPI.isRequired == 'yes' ? true : false;
+                    delete exposedAPI.isRequired;
+                    count++
+                }
+            }
+        }
+    }
+    logSuccess(count + " isRequired converted")
+
+    // Convert dependantAPIs to dependentAPIs in coreFunction, security and management segments
+    process.stdout.write("Convert dependantAPIs to dependentAPIs in coreFunction, security and management segments: ")
+    count = 0
+    for (const propertyKey of segmentList) {
+        if (yamlObject.spec[propertyKey].dependantAPIs) {
+            yamlObject.spec[propertyKey].dependentAPIs = yamlObject.spec[propertyKey].dependantAPIs
+            delete yamlObject.spec[propertyKey].dependantAPIs
+            count++
+        }
+    }
+    logSuccess(count + " dependantAPIs converted")
+
+    // Convert isRequired: yes/no to required: true/false for any API in dependentAPIs property of coreFunction, security and management segments: 
+    process.stdout.write("Convert isRequired: yes/no to required: true/false for any API in dependentAPIs property of coreFunction, security and management segments: ")
+    count = 0
+    for (const propertyKey of segmentList) {
+        if (yamlObject.spec[propertyKey].dependentAPIs) {
+            for (var dependentAPIs of yamlObject.spec[propertyKey].dependentAPIs) {
+                if (dependentAPIs.isRequired) {
+                    // convert 'yes' or 'no' to true or false
+                    dependentAPIs.required = dependentAPIs.isRequired == 'yes' ? true : false
+                    delete dependentAPIs.isRequired
+                    count++
+                }
+            }
+        }
+    }
+    logSuccess(count + " isRequired converted")
+
+    // Rename to remove component from property names
+    rename(yamlObject.spec, "componentFunctionalBlock", "functionalBlock")
+    rename(yamlObject.spec, "componentPublicationDate", "publicationDate")
+    rename(yamlObject.spec, "componentStatus", "status")
+    rename(yamlObject.spec, "componentVersion", "version")
+    rename(yamlObject.spec, "componenentDescription", "description")
+
+    // recreate type from ID and name
+    process.stdout.write("Create type from componentId and componentName: ")
+    if (yamlObject.spec.componentId && yamlObject.spec.componentName) {
+        yamlObject.spec.type = yamlObject.spec.componentId + "-" + yamlObject.spec.componentName
+        delete yamlObject.spec.componentId
+        delete yamlObject.spec.componentName
+        logSuccess("OK")
+    } else {
+        logWarn("Not found")
+    }
+
+    // remove reporting
+    process.stdout.write("Remove reporting: ")
+    if (yamlObject.reporting) {
+        delete yamlObject.reporting
+        logSuccess("OK")
+    } else {
+        logWarn("Not found")
+    }
+
+
     return yamlObject;
 }
 
-
-// Class to capture the old and new API versions
-class APIVersion {
-    constructor(oldAPIVersion, newAPIVersion) {
-    this.oldAPIVersion = oldAPIVersion.split('/')[1]; // only use the version part of the API version i.e. remove ''
-    this.newAPIVersion = newAPIVersion.split('/')[1];
-    }
-
-    // test if array of oldAPIVersions contains the oldAPIVersion and array of newAPIVersions contains the newAPIVersion
-    mapOldToNew(oldAPIVersionList, newAPIVersionList) {
-    if (oldAPIVersionList.includes(this.oldAPIVersion) && newAPIVersionList.includes(this.newAPIVersion)) {
-        return true;
+function rename(object, oldName, newName) {
+    process.stdout.write("Rename " + oldName + " to " + newName + ": ")
+    if (object[oldName]) {
+        object[newName] = object[oldName];
+        delete object[oldName];
+        logSuccess("OK")
     } else {
-        return false;
+        logWarn("Not found")
     }
-    }
-} 
+}
+
+function logSuccess(message) {
+    console.log("\x1b[32m " + message + "\x1b[0m")
+}
+
+function logWarn(message) {
+    console.log("\x1b[33m " + message + "\x1b[0m")
+}
 
 export { convertVersion };
